@@ -17,6 +17,7 @@ String myChipStrName = "sensor-C";
 //String nodeName(myChipStrName); // Name needs to be unique and uses the attached .h file
 
 SimpleList<uint32_t> nodes; // painlessmesh
+boolean iAmConnected = false;
 
 // stats
 uint32_t msgsReceived = 0;
@@ -25,42 +26,30 @@ uint32_t msgsSent = 0;
 
 // User stub
 void sendMessage() ; // Prototype so PlatformIO doesn't complain
-void sendDataResquestToSensor() ; // Prototype to schedule doesn't complain
-
-Task taskSendDataRequest( TASK_SECOND * 1 , TASK_FOREVER, &sendDataResquestToSensor);
-
 
 void doNothing() {
   // TO-DO: a health checking
-  int i = 0;
+  int i = random(17171);
 }
 
 void sendDataToDrone() {
   sendMessage();
 }
 
-void sendDataResquestToSensor() {
-  sendMessage();
-  //taskSendDataRequest.setInterval(TASK_SECOND * 1);  // between 1 and 5 seconds
-}
-
-
 void sendStatsToGSr() {
   
   String msg = " I got from ";
   //msg += myChipStrName;
   msg += "-> " + String(msgsReceived);
-  mesh.sendBroadcast( msg );
-  msgsSent++;
-  delay(20); // terrible workaround to provoce preemption between async_tcp and others. otherwise watchdog kills the connection to prevent starvation
-  // tries to prevent sensor to reboot with large transfers
+  if (iAmConnected) {
+    mesh.sendBroadcast( msg );
+    msgsSent++;
+  }
 }
 
 void sendMessage() {
   mesh.sendBroadcast(myChipStrName);
   msgsSent++;
-  delay(20); // terrible workaround to provoce preemption between async_tcp and others. otherwise watchdog kills the connection to prevent starvation
-  // tries to prevent sensor to reboot with large transfers
 }
 
 
@@ -82,7 +71,7 @@ void receivedCallback_str(String &from, String &msg ) {
     } 
     else if(from.indexOf("GS") >= 0) {
         if(myChipStrName.indexOf("sensor") >= 0){ 
-          //sendStatsToGSr();
+          //SendStatsToGSr();
           //Serial.printf("%s: Msg from %s : %s\n", myChipStrName, from.c_str(), msg.c_str());        
           doNothing();
         } else { 
@@ -93,8 +82,6 @@ void receivedCallback_str(String &from, String &msg ) {
         Serial.printf("%s: UNKWON PLAYER from %s msg=%s\n", myChipStrName, from.c_str(), msg.c_str());
     }
   }
-  delay(2); // terrible workaround to provoce preemption between async_tcp and others. otherwise watchdog kills the connection to prevent starvation  
-  // tries to prevent sensor to reboot with large transfers
 }
 
 void newConnectionCallback(uint32_t nodeId) {
@@ -108,12 +95,16 @@ void changedConnectionCallback() {
 
   Serial.printf("Num nodes: %d\n", nodes.size());
   if(nodes.size()>0){
+    iAmConnected = true;
     digitalWrite(LED, HIGH);
     Serial.printf("%s: Turnning the led ON (connection active)\n", myChipStrName);
   }else{
+    iAmConnected = false;
     digitalWrite(LED, LOW);
     Serial.printf("%s: Turnning the led OFF (no connections)\n", myChipStrName);
   }
+
+   
   
   Serial.printf("Connection list:");
   SimpleList<uint32_t>::iterator node = nodes.begin();
@@ -149,12 +140,7 @@ void setup() {
   mesh.onChangedConnections(&changedConnectionCallback);
   mesh.onNodeTimeAdjusted(&nodeTimeAdjustedCallback);
 
-  userScheduler.addTask( taskSendDataRequest );
-  if(myChipStrName.indexOf("drone") >= 0){ 
-    taskSendDataRequest.enable();
-  }
-
-  WiFi.setTxPower(WIFI_POWER_7dBm );
+  //WiFi.setTxPower(WIFI_POWER_7dBm );
 
   pinMode (LED, OUTPUT);
   digitalWrite(LED, LOW);
@@ -174,4 +160,7 @@ void loop() {
   if ((msgsSent % 1000 == 0)&&(msgsSent > 0)){
      Serial.printf("%s: Acc msg sent %d\n", myChipStrName, msgsSent);  
   }
+
+
+  
 }
