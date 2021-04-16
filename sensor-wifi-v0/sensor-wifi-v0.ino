@@ -64,7 +64,6 @@ void receivedCallback_str(String &from, String &msg ) {
 
     if(from.indexOf("drone") >= 0) {
         sendDataToDrone();
-        msgsSent++;
     } 
     else if(from.indexOf("sensor") >= 0) {
       doNothing();
@@ -74,10 +73,7 @@ void receivedCallback_str(String &from, String &msg ) {
           //SendStatsToGSr();
           //Serial.printf("%s: Msg from %s : %s\n", myChipStrName, from.c_str(), msg.c_str());        
           doNothing();
-        } else { 
-          doNothing();
-        }
-        
+        } 
     } else {
         Serial.printf("%s: UNKWON PLAYER from %s msg=%s\n", myChipStrName, from.c_str(), msg.c_str());
     }
@@ -103,8 +99,6 @@ void changedConnectionCallback() {
     digitalWrite(LED, LOW);
     Serial.printf("%s: Turnning the led OFF (no connections)\n", myChipStrName);
   }
-
-   
   
   Serial.printf("Connection list:");
   SimpleList<uint32_t>::iterator node = nodes.begin();
@@ -140,7 +134,7 @@ void setup() {
   mesh.onChangedConnections(&changedConnectionCallback);
   mesh.onNodeTimeAdjusted(&nodeTimeAdjustedCallback);
 
-  //WiFi.setTxPower(WIFI_POWER_7dBm );
+  WiFi.setTxPower(WIFI_POWER_7dBm );
 
   pinMode (LED, OUTPUT);
   digitalWrite(LED, LOW);
@@ -154,9 +148,9 @@ void loop() {
   //int i = WiFi.getTxPower();    
   //Serial.printf("dBm = %d\n",i);
 
-  if ((msgsReceived % 1000 == 0)&&(msgsReceived > 0)){
-     Serial.printf("%s: Acc received %d\n", myChipStrName, msgsReceived);       
-  }  
+//  if ((msgsReceived % 1001 == 0)&&(msgsReceived > 0)){
+//     Serial.printf("%s: Acc received %d\n", myChipStrName, msgsReceived);       
+//  }  
   if ((msgsSent % 1000 == 0)&&(msgsSent > 0)){
      Serial.printf("%s: Acc msg sent %d\n", myChipStrName, msgsSent);  
   }

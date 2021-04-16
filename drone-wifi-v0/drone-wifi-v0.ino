@@ -46,9 +46,10 @@ void sendDataResquestToSensor() {
 }
 
 void sendStatsToGSr() {
-  String msg = " I got from ";
+  String msg = " I got ";
   //msg += myChipStrName;
   msg += "-> " + String(msgsReceived);
+  msg += " msgs so far.";
   if (iAmConnected) {
     mesh.sendBroadcast( msg );
     msgsSent++;
@@ -77,6 +78,7 @@ void receivedCallback_str(String &from, String &msg ) {
         if(myChipStrName.indexOf("drone") >= 0){ 
           msgsReceived++;
           sendDataResquestToSensor();
+          taskSendDataRequest.disable();
         } else {
           doNothing();
         }
@@ -84,11 +86,9 @@ void receivedCallback_str(String &from, String &msg ) {
     else if(from.indexOf("GS") >= 0) {
         if(myChipStrName.indexOf("drone") >= 0){ 
           sendStatsToGSr();
+          taskSendDataRequest.disable();
           Serial.printf("%s: Msg from %s : %s\n", myChipStrName, from.c_str(), msg.c_str());        
-        } else { 
-          doNothing();
-        }
-        
+        }         
     } else {
         Serial.printf("%s: UNKWON PLAYER from %s msg=%s\n", myChipStrName, from.c_str(), msg.c_str());
     }
@@ -106,17 +106,16 @@ void changedConnectionCallback() {
 
   Serial.printf("Num nodes: %d\n", nodes.size());
   if(nodes.size()>0){
-    sendDataResquestToSensor();
+    //sendDataResquestToSensor();
     iAmConnected = true;
     digitalWrite(LED, HIGH);
     Serial.printf("%s: Turnning the led ON (connection active)\n", myChipStrName);
   }else{
     iAmConnected = false;
+    taskSendDataRequest.enable();
     digitalWrite(LED, LOW);
     Serial.printf("%s: Turnning the led OFF (no connections)\n", myChipStrName);
   }
-
- 
   Serial.printf("Connection list:");
   SimpleList<uint32_t>::iterator node = nodes.begin();
   while (node != nodes.end()) {
@@ -151,11 +150,10 @@ void setup() {
 
   userScheduler.addTask( taskSendDataRequest );
   if(myChipStrName.indexOf("drone") >= 0){ 
-    //taskSendDataRequest.enable();
-    taskSendDataRequest.disable();
+    taskSendDataRequest.enable();
   }
 
-  //WiFi.setTxPower(WIFI_POWER_7dBm );
+  WiFi.setTxPower(WIFI_POWER_7dBm );
 
   pinMode (LED, OUTPUT);
   digitalWrite(LED, LOW);
@@ -172,9 +170,9 @@ void loop() {
   if ((msgsReceived % 1000 == 0)&&(msgsReceived > 0)){
      Serial.printf("%s: Acc received %d\n", myChipStrName, msgsReceived);       
   }  
-  if ((msgsSent % 1000 == 0)&&(msgsSent > 0)){
-     Serial.printf("%s: Acc msg sent %d\n", myChipStrName, msgsSent);  
-  }
-  
+//  if ((msgsSent % 1002 == 0)&&(msgsSent > 0)){
+//     Serial.printf("%s: Acc msg sent %d\n", myChipStrName, msgsSent);  
+//  }
+//  
   
 }
