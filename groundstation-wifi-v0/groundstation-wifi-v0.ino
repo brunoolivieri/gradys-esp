@@ -133,7 +133,7 @@ void setup() {
   mesh.onChangedConnections(&changedConnectionCallback);
   mesh.onNodeTimeAdjusted(&nodeTimeAdjustedCallback);
 
-  WiFi.setTxPower(WIFI_POWER_5dBm );
+  WiFi.setTxPower(WIFI_POWER_5dBm);
 
   pinMode (LED, OUTPUT);
   digitalWrite(LED, LOW);
