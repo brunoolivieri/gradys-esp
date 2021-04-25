@@ -167,7 +167,7 @@ void loop() {
   //int i = WiFi.getTxPower();    
   //Serial.printf("dBm = %d\n",i);
 
-  if ((msgsReceived % 1000 == 0)&&(msgsReceived > 0)){
+  if ((msgsReceived % 1001 == 0)&&(msgsReceived > 0)){
      Serial.printf("%s: Acc received %d\n", myChipStrName, msgsReceived);       
   }  
 //  if ((msgsSent % 1002 == 0)&&(msgsSent > 0)){
