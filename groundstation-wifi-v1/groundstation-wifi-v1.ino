@@ -12,8 +12,11 @@ Scheduler userScheduler; // to control tasks
 //painlessMesh  mesh;
 namedMesh  mesh;
 
+//JSON as string, with a command to change LED
+String commandFromGUI;
+
 char myChipName[myChipNameSIZE]; // Chip name (to store MAC Address
-String myChipStrName = "sensor-C";
+String myChipStrName = "GS-A";
 //String nodeName(myChipStrName); // Name needs to be unique and uses the attached .h file
 
 SimpleList<uint32_t> nodes; // painlessmesh
@@ -24,8 +27,11 @@ uint32_t msgsReceived = 0;
 uint32_t msgsSent = 0;
 
 
+
 // User stub
 void sendMessage() ; // Prototype so PlatformIO doesn't complain
+void sendDataResquestToSensor() ; // Prototype to schedule doesn't complain
+
 
 void doNothing() {
   // TO-DO: a health checking
@@ -36,20 +42,20 @@ void sendDataToDrone() {
   sendMessage();
 }
 
-void sendStatsToGSr() {
-  
-  String msg = " I got from ";
-  //msg += myChipStrName;
-  msg += "-> " + String(msgsReceived);
-  if (iAmConnected) {
-    mesh.sendBroadcast( msg );
-    msgsSent++;
-  }
+void sendDataResquestToSensor() {
+  sendMessage();
+  //taskSendDataRequest.setInterval(TASK_SECOND * 1);  // between 1 and 5 seconds
+}
+
+void sendDataResquestToDrone() {
+  sendMessage();
 }
 
 void sendMessage() {
-  mesh.sendBroadcast(myChipStrName);
-  msgsSent++;
+  if (iAmConnected) {
+    mesh.sendBroadcast(myChipStrName);
+    msgsSent++;
+  }
 }
 
 
@@ -63,19 +69,17 @@ void receivedCallback_str(String &from, String &msg ) {
   if(not(from.indexOf(myChipStrName) >= 0)) { // naive loopback avoiddance
 
     if(from.indexOf("drone") >= 0) {
-        sendDataToDrone();
+       //sendDataResquestToDrone();
+       Serial.println(msg.c_str());
+       //Serial.printf("%s: Msg %s : %s\n", myChipStrName, from.c_str(), msg.c_str());
     } 
     else if(from.indexOf("sensor") >= 0) {
-      doNothing();
+        doNothing();
     } 
     else if(from.indexOf("GS") >= 0) {
-        if(myChipStrName.indexOf("sensor") >= 0){ 
-          //SendStatsToGSr();
-          //Serial.printf("%s: Msg from %s : %s\n", myChipStrName, from.c_str(), msg.c_str());        
-          doNothing();
-        } 
+        doNothing();
     } else {
-        Serial.printf("%s: UNKWON PLAYER from %s msg=%s\n", myChipStrName, from.c_str(), msg.c_str());
+        Serial.printf("%s: UNKWON PLAYER from %s :%s\n", myChipStrName, from.c_str(), msg.c_str());
     }
   }
 }
@@ -91,6 +95,7 @@ void changedConnectionCallback() {
 
   Serial.printf("Num nodes: %d\n", nodes.size());
   if(nodes.size()>0){
+    //sendDataResquestToSensor();
     iAmConnected = true;
     digitalWrite(LED, HIGH);
     Serial.printf("%s: Turnning the led ON (connection active)\n", myChipStrName);
@@ -99,7 +104,6 @@ void changedConnectionCallback() {
     digitalWrite(LED, LOW);
     Serial.printf("%s: Turnning the led OFF (no connections)\n", myChipStrName);
   }
-  
   Serial.printf("Connection list:");
   SimpleList<uint32_t>::iterator node = nodes.begin();
   while (node != nodes.end()) {
@@ -107,8 +111,6 @@ void changedConnectionCallback() {
     node++;
   }
   Serial.println();
-
-
 }
 
 void nodeTimeAdjustedCallback(int32_t offset) {
@@ -134,31 +136,41 @@ void setup() {
   mesh.onChangedConnections(&changedConnectionCallback);
   mesh.onNodeTimeAdjusted(&nodeTimeAdjustedCallback);
 
-  WiFi.setTxPower(WIFI_POWER_5dBm  );
+  WiFi.setTxPower(WIFI_POWER_5dBm);
 
   pinMode (LED, OUTPUT);
   digitalWrite(LED, LOW);
   Serial.printf("%s: Turnning the led OFF\n", myChipStrName);
-    
+  
 }
 
 void loop() {
+  //Check if there's a message from serial and broadcast it
+  while(Serial.available()){
+    commandFromGUI = Serial.readString( );
+    if (iAmConnected) {
+      mesh.sendBroadcast(commandFromGUI);
+    }
+  }
+  
   // it will run the user scheduler as well
   mesh.update();
+
   //int i = WiFi.getTxPower();    
   //Serial.printf("dBm = %d\n",i);
 
-//  if ((msgsReceived % 1001 == 0)&&(msgsReceived > 0)){
+//  if ((msgsReceived % 1000 == 0)&&(msgsReceived > 0)){
 //     Serial.printf("%s: Acc received %d\n", myChipStrName, msgsReceived);       
 //  }  
-  if ((msgsSent % 1000 == 0)&&(msgsSent > 0)){
-     Serial.printf("%s: Acc msg sent %d\n", myChipStrName, msgsSent);  
-  }
+//  if ((msgsSent % 1000 == 0)&&(msgsSent > 0)){
+//     Serial.printf("%s: Acc msg sent %d\n", myChipStrName, msgsSent);  
+//  }
 
- 
+
 }
 
-//
+
+
 //typedef enum {
 //    WIFI_POWER_19_5dBm = 78,// 19.5dBm
 //    WIFI_POWER_19dBm = 76,// 19dBm
