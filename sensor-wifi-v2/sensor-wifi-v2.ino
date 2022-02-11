@@ -1,6 +1,8 @@
 //#include "painlessMesh.h"
 #include "namedMesh.h"
 #include <ArduinoJson.h>
+#include "WiFiGeneric.h" // to redude the power
+
 
 #define   MESH_PREFIX     "gradysnetwork"
 #define   MESH_PASSWORD   "yetanothersecret"
@@ -12,8 +14,17 @@ Scheduler userScheduler; // to control tasks
 //painlessMesh  mesh;
 namedMesh  mesh;
 
+// test command to use at the Lab
+String commandFromSensor;
+
+//Deserialized str to json from GS broadcast
+DynamicJsonDocument json_received(1024);
+//JSON to send ACK
+StaticJsonDocument<256> json_to_send;
+char json_string[256];
+
 char myChipName[myChipNameSIZE]; // Chip name (to store MAC Address
-String myChipStrName = "sensor-C";
+String myChipStrName = "sensor-9";
 //String nodeName(myChipStrName); // Name needs to be unique and uses the attached .h file
 
 SimpleList<uint32_t> nodes; // painlessmesh
@@ -22,6 +33,8 @@ boolean iAmConnected = false;
 // stats
 uint32_t msgsReceived = 0;
 uint32_t msgsSent = 0;
+uint8_t maxConnections = 0;
+
 
 
 // User stub
@@ -36,42 +49,24 @@ void sendDataToDrone() {
   sendMessage();
 }
 
-void sendStatsToGSr() {
-  
-  String msg = " I got from ";
-  //msg += myChipStrName;
-  msg += "-> " + String(msgsReceived);
-  if (iAmConnected) {
-    mesh.sendBroadcast( msg );
-    msgsSent++;
-  }
-}
-
 void sendMessage() {
   mesh.sendBroadcast(myChipStrName);
   msgsSent++;
 }
-
-
-//void receivedCallback( uint32_t from, String &msg ) {
-//  Serial.printf("%s: Received from %u msg=%s\n", myChipName, from, msg.c_str());
-//}
 
 void receivedCallback_str(String &from, String &msg ) {
 
   msgsReceived++;
   if(not(from.indexOf(myChipStrName) >= 0)) { // naive loopback avoiddance
 
-    if(from.indexOf("drone") >= 0) {
+    if(from.indexOf("uav") >= 0) {
         sendDataToDrone();
     } 
     else if(from.indexOf("sensor") >= 0) {
       doNothing();
     } 
-    else if(from.indexOf("GS") >= 0) {
+    else if(from.indexOf("gs") >= 0) {
         if(myChipStrName.indexOf("sensor") >= 0){ 
-          //SendStatsToGSr();
-          //Serial.printf("%s: Msg from %s : %s\n", myChipStrName, from.c_str(), msg.c_str());        
           doNothing();
         } 
     } else {
@@ -88,7 +83,9 @@ void changedConnectionCallback() {
   Serial.printf("%s: Changed connections\n", myChipStrName);
 
   nodes = mesh.getNodeList();
-
+  if(nodes.size()>maxConnections){
+    maxConnections = nodes.size();
+  }
   Serial.printf("Num nodes: %d\n", nodes.size());
   if(nodes.size()>0){
     iAmConnected = true;
@@ -134,7 +131,7 @@ void setup() {
   mesh.onChangedConnections(&changedConnectionCallback);
   mesh.onNodeTimeAdjusted(&nodeTimeAdjustedCallback);
 
-  WiFi.setTxPower(WIFI_POWER_5dBm  );
+  WiFi.setTxPower(WIFI_POWER_11dBm); // Specific for the experiment
 
   pinMode (LED, OUTPUT);
   digitalWrite(LED, LOW);
@@ -143,16 +140,16 @@ void setup() {
 }
 
 void loop() {
+
   // it will run the user scheduler as well
   mesh.update();
-  //int i = WiFi.getTxPower();    
-  //Serial.printf("dBm = %d\n",i);
-
-//  if ((msgsReceived % 1001 == 0)&&(msgsReceived > 0)){
-//     Serial.printf("%s: Acc received %d\n", myChipStrName, msgsReceived);       
-//  }  
-  if ((msgsSent % 1000 == 0)&&(msgsSent > 0)){
-     Serial.printf("%s: Acc msg sent %d\n", myChipStrName, msgsSent);  
+  
+  if ((msgsReceived % 1002 == 0)&&(msgsReceived > 0)){
+     Serial.printf("%s: msgsReceived received %d\n", myChipStrName, msgsReceived);       
+  }  
+  
+  if ((msgsSent % 1003 == 0)&&(msgsSent > 0)){
+     Serial.printf("%s: msgsSent msg sent %d\n", myChipStrName, msgsSent);  
   }
 
  

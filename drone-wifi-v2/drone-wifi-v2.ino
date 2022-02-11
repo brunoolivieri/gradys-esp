@@ -1,6 +1,9 @@
+#include <stdio.h>
+#include <inttypes.h>
 //#include "painlessMesh.h"
 #include "namedMesh.h"
 #include <ArduinoJson.h>
+#include "WiFiGeneric.h" // to redude the power
 
 #define   MESH_PREFIX     "gradysnetwork"
 #define   MESH_PASSWORD   "yetanothersecret"
@@ -12,31 +15,42 @@ Scheduler userScheduler; // to control tasks
 //painlessMesh  mesh;
 namedMesh  mesh;
 
-//JSON as string, with a command to change LED
-String commandFromGUI;
+// test command to use at the Lab
+String commandFromDrone;
+
+//Deserialized str to json from GS broadcast
+DynamicJsonDocument json_received(1024);
+//JSON to send ACK
+StaticJsonDocument<512> json_to_send;
+char json_string[512];
 
 char myChipName[myChipNameSIZE]; // Chip name (to store MAC Address
-String myChipStrName = "GS-A";
+String myChipStrName = "uav-A";
 //String nodeName(myChipStrName); // Name needs to be unique and uses the attached .h file
 
 SimpleList<uint32_t> nodes; // painlessmesh
 boolean iAmConnected = false;
 
 // stats
+uint32_t dataMsgReceived = 0;
+uint32_t dataMsgReceivedFromEachSensor[] = {0,0,0,0,0,0,0,0,0,0};
+uint32_t gsMsgReceived = 0;
 uint32_t msgsReceived = 0;
 uint32_t msgsSent = 0;
-
+uint8_t maxConnections = 0;
 
 
 // User stub
-void sendMessage() ; // Prototype so PlatformIO doesn't complain
-void sendDataResquestToSensor() ; // Prototype to schedule doesn't complain
+void sendMessage() ; // Prototype, so PlatformIO doesn't complain
+void sendDataResquestToSensor() ; // Prototype, so PlatformIO doesn't complain
 
+Task taskSendDataRequest( TASK_SECOND * 1 , TASK_FOREVER, &sendDataResquestToSensor);
 
 void doNothing() {
   // TO-DO: a health checking
   int i = random(17171);
 }
+
 
 void sendDataToDrone() {
   sendMessage();
@@ -47,10 +61,6 @@ void sendDataResquestToSensor() {
   //taskSendDataRequest.setInterval(TASK_SECOND * 1);  // between 1 and 5 seconds
 }
 
-void sendDataResquestToDrone() {
-  sendMessage();
-}
-
 void sendMessage() {
   if (iAmConnected) {
     mesh.sendBroadcast(myChipStrName);
@@ -58,28 +68,54 @@ void sendMessage() {
   }
 }
 
-
-//void receivedCallback( uint32_t from, String &msg ) {
-//  Serial.printf("%s: Received from %u msg=%s\n", myChipName, from, msg.c_str());
-//}
-
 void receivedCallback_str(String &from, String &msg ) {
 
   msgsReceived++;
-  if(not(from.indexOf(myChipStrName) >= 0)) { // naive loopback avoiddance
+  if(not(from.indexOf(myChipStrName) >= 0)) { // naive loopback avoidance
 
-    if(from.indexOf("drone") >= 0) {
-       //sendDataResquestToDrone();
-       Serial.println(msg.c_str());
-       //Serial.printf("%s: Msg %s : %s\n", myChipStrName, from.c_str(), msg.c_str());
+    if(from.indexOf("uav") >= 0) {
+        doNothing();
     } 
     else if(from.indexOf("sensor") >= 0) {
-        doNothing();
+        if(myChipStrName.indexOf("uav") >= 0){ 
+          dataMsgReceived++;
+          //taskSendDataRequest.disable();
+          char sensorID[10];
+          from.toCharArray(sensorID, 10);
+          int idx = sensorID[7] - '0';
+          dataMsgReceivedFromEachSensor[idx]++;
+          sendDataResquestToSensor();
+        } else {
+          doNothing();
+        }
     } 
-    else if(from.indexOf("GS") >= 0) {
-        doNothing();
+    else if(from.indexOf("gs") >= 0) {      
+      if(myChipStrName.indexOf("uav") >= 0){ 
+          //sendStatsToGSr();
+          //taskSendDataRequest.disable();
+          gsMsgReceived++;
+          Serial.printf("%s: Msg from %s : %s\n", myChipStrName, from.c_str(), msg.c_str());
+          JsonObject root = json_to_send.to<JsonObject>(); 
+          digitalWrite(LED,HIGH);
+          root["id"] = myChipStrName;
+          root["msgsReceived"] = msgsReceived;
+          root["msgsSent"] = msgsSent;
+          root["dataMsgReceived"] = dataMsgReceived;
+          root["gsMsgReceived"] = gsMsgReceived;
+          root["maxConnections"] = maxConnections;
+          JsonArray fromSensors = root.createNestedArray("fromSensors");         
+          for(int i = 0; i < 10; i++)
+          {
+            fromSensors.add((unsigned long)dataMsgReceivedFromEachSensor[i]);
+          }          
+          serializeJson(root, json_string);
+          if (iAmConnected) {
+            mesh.sendBroadcast(json_string);
+          }
+          Serial.printf("%s: Msg sent %s\n", myChipStrName, json_string);
+      }         
     } else {
-        Serial.printf("%s: UNKWON PLAYER from %s :%s\n", myChipStrName, from.c_str(), msg.c_str());
+        Serial.printf("%s: UNKWON PLAYER from %s msg=%s\n", myChipStrName, from.c_str(), msg.c_str());
     }
   }
 }
@@ -92,7 +128,9 @@ void changedConnectionCallback() {
   Serial.printf("%s: Changed connections\n", myChipStrName);
 
   nodes = mesh.getNodeList();
-
+  if(nodes.size()>maxConnections){
+    maxConnections = nodes.size();
+  }
   Serial.printf("Num nodes: %d\n", nodes.size());
   if(nodes.size()>0){
     //sendDataResquestToSensor();
@@ -101,6 +139,7 @@ void changedConnectionCallback() {
     Serial.printf("%s: Turnning the led ON (connection active)\n", myChipStrName);
   }else{
     iAmConnected = false;
+    taskSendDataRequest.enable();
     digitalWrite(LED, LOW);
     Serial.printf("%s: Turnning the led OFF (no connections)\n", myChipStrName);
   }
@@ -136,39 +175,46 @@ void setup() {
   mesh.onChangedConnections(&changedConnectionCallback);
   mesh.onNodeTimeAdjusted(&nodeTimeAdjustedCallback);
 
-  WiFi.setTxPower(WIFI_POWER_5dBm);
+  userScheduler.addTask( taskSendDataRequest);
+  if(myChipStrName.indexOf("uav") >= 0){ 
+    taskSendDataRequest.enable();
+  }
+
+  WiFi.setTxPower(WIFI_POWER_11dBm); // Specific for the experiment
 
   pinMode (LED, OUTPUT);
   digitalWrite(LED, LOW);
   Serial.printf("%s: Turnning the led OFF\n", myChipStrName);
-  
+ 
 }
 
 void loop() {
-  //Check if there's a message from serial and broadcast it
   while(Serial.available()){
-    commandFromGUI = Serial.readString( );
+    commandFromDrone = Serial.readString( );
     if (iAmConnected) {
-      mesh.sendBroadcast(commandFromGUI);
+      mesh.sendBroadcast(commandFromDrone);
     }
   }
   
   // it will run the user scheduler as well
   mesh.update();
 
-  //int i = WiFi.getTxPower();    
-  //Serial.printf("dBm = %d\n",i);
-
-//  if ((msgsReceived % 1000 == 0)&&(msgsReceived > 0)){
-//     Serial.printf("%s: Acc received %d\n", myChipStrName, msgsReceived);       
-//  }  
-//  if ((msgsSent % 1000 == 0)&&(msgsSent > 0)){
-//     Serial.printf("%s: Acc msg sent %d\n", myChipStrName, msgsSent);  
-//  }
-
-
+  if ((dataMsgReceived % 1001 == 0)&&(dataMsgReceived > 0)){
+     Serial.printf("%s: dataMsgReceived received %d\n", myChipStrName, dataMsgReceived);   
+     for(int i = 0; i < 10; i++)
+      {
+        Serial.printf("from sensor %d = %lu\n", i, (unsigned long)dataMsgReceivedFromEachSensor[i]);
+      }
+  }  
+  if ((msgsReceived % 1002 == 0)&&(msgsReceived > 0)){
+     Serial.printf("%s: msgsReceived received %d\n", myChipStrName, msgsReceived);       
+  }  
+  if ((msgsSent % 1003 == 0)&&(msgsSent > 0)){
+     Serial.printf("%s: msgsSent msg sent %d\n", myChipStrName, msgsSent);  
+  }
+  
+  
 }
-
 
 
 //typedef enum {

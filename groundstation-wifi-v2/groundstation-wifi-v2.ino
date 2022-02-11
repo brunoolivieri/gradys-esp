@@ -13,8 +13,8 @@ Scheduler userScheduler; // to control tasks
 //painlessMesh  mesh;
 namedMesh  mesh;
 
-//Command ACK received from serial
-String commandFromDrone;
+// test command to use at the Lab
+String commandFromGUI;
 
 //Deserialized str to json from GS broadcast
 DynamicJsonDocument json_received(1024);
@@ -23,7 +23,7 @@ StaticJsonDocument<256> json_to_send;
 char json_string[256];
 
 char myChipName[myChipNameSIZE]; // Chip name (to store MAC Address
-String myChipStrName = "drone-B";
+String myChipStrName = "gs-A";
 //String nodeName(myChipStrName); // Name needs to be unique and uses the attached .h file
 
 SimpleList<uint32_t> nodes; // painlessmesh
@@ -32,37 +32,25 @@ boolean iAmConnected = false;
 // stats
 uint32_t msgsReceived = 0;
 uint32_t msgsSent = 0;
+uint32_t uavMsgReceived = 0;
+
+
+
 
 // User stub
 void sendMessage() ; // Prototype so PlatformIO doesn't complain
-void sendDataResquestToSensor() ; // Prototype to schedule doesn't complain
-
-Task taskSendDataRequest( TASK_SECOND * 1 , TASK_FOREVER, &sendDataResquestToSensor);
 
 void doNothing() {
   // TO-DO: a health checking
   int i = random(17171);
 }
 
-
 void sendDataToDrone() {
   sendMessage();
 }
 
-void sendDataResquestToSensor() {
+void sendDataResquestToDrone() {
   sendMessage();
-  //taskSendDataRequest.setInterval(TASK_SECOND * 1);  // between 1 and 5 seconds
-}
-
-void sendStatsToGSr() {
-  String msg = " I got ";
-  //msg += myChipStrName;
-  msg += "-> " + String(msgsReceived);
-  msg += " msgs so far.";
-  if (iAmConnected) {
-    mesh.sendBroadcast( msg );
-    msgsSent++;
-  }
 }
 
 void sendMessage() {
@@ -78,74 +66,24 @@ void sendMessage() {
 
 void receivedCallback_str(String &from, String &msg ) {
 
+  msgsReceived++;
   if(not(from.indexOf(myChipStrName) >= 0)) { // naive loopback avoiddance
 
-    if(from.indexOf("drone") >= 0) {
-        doNothing();
+    if(from.indexOf("uav") >= 0) {
+       uavMsgReceived++;
+       //Serial.println(msg.c_str());
+       Serial.printf("%s: Msg from %s : %s\n", myChipStrName, from.c_str(), msg.c_str());
+       if ((uavMsgReceived % 5 == 0)){
+          sendDataResquestToDrone();
+       }  
     } 
     else if(from.indexOf("sensor") >= 0) {
-        if(myChipStrName.indexOf("drone") >= 0){ 
-          msgsReceived++;
-          sendDataResquestToSensor();
-          taskSendDataRequest.disable();
-        } else {
-          doNothing();
-        }
+        doNothing();
     } 
-    else if(from.indexOf("GS") >= 0) {      
-      if(myChipStrName.indexOf("drone") >= 0){ 
-          //sendStatsToGSr();
-          taskSendDataRequest.disable();
-          //Serial.printf("%s: Msg from %s : %s\n", myChipStrName, from.c_str(), msg.c_str());
-
-          deserializeJson(json_received, msg.c_str());
-          byte json_type = json_received["type"];
-          JsonObject root = json_to_send.to<JsonObject>(); 
-          switch(json_type) {
-            case 20: //LED On
-              digitalWrite(LED,HIGH);
-              root["id"] = "3";
-              root["type"] = 21;
-              root["seq"] = 0;
-              root["lat"] = 56.75608;
-              root["log"] = -9.302038;
-              root["high"] = 10;
-              root["DATA"] = "0";
-              serializeJson(root, json_string);
-              if (iAmConnected) {
-                mesh.sendBroadcast(json_string);
-              }
-              break;
-            case 22: //LED Off
-              digitalWrite(LED, LOW);
-              root["id"] = "3";
-              root["type"] = 23;
-              root["seq"] = 0;
-              root["lat"] = 56.75608;
-              root["log"] = -9.302038;
-              root["high"] = 10;
-              root["DATA"] = "0";
-              serializeJson(root, json_string);
-              if (iAmConnected) {
-                mesh.sendBroadcast(json_string);
-              }
-              break;
-            case 24: //Forward msg
-              Serial.println(msg.c_str());
-              break;
-            case 26: //Forward msg
-              Serial.println(msg.c_str());
-              break;
-            case 28: //Iniciar voo
-              Serial.println(msg.c_str());
-              break;
-            case 30: //Interromper voo
-              Serial.println(msg.c_str());
-              break;
-          }   
-      }         
+    else if(from.indexOf("gs") >= 0) {
+        doNothing();
     } else {
-        Serial.printf("%s: UNKWON PLAYER from %s msg=%s\n", myChipStrName, from.c_str(), msg.c_str());
+        Serial.printf("%s: UNKWON PLAYER from %s :%s\n", myChipStrName, from.c_str(), msg.c_str());
     }
   }
 }
@@ -167,7 +105,6 @@ void changedConnectionCallback() {
     Serial.printf("%s: Turnning the led ON (connection active)\n", myChipStrName);
   }else{
     iAmConnected = false;
-    taskSendDataRequest.enable();
     digitalWrite(LED, LOW);
     Serial.printf("%s: Turnning the led OFF (no connections)\n", myChipStrName);
   }
@@ -203,41 +140,39 @@ void setup() {
   mesh.onChangedConnections(&changedConnectionCallback);
   mesh.onNodeTimeAdjusted(&nodeTimeAdjustedCallback);
 
-  userScheduler.addTask( taskSendDataRequest );
-  if(myChipStrName.indexOf("drone") >= 0){ 
-    taskSendDataRequest.enable();
-  }
-
-  WiFi.setTxPower(WIFI_POWER_5dBm );
+  WiFi.setTxPower(WIFI_POWER_11dBm);
 
   pinMode (LED, OUTPUT);
   digitalWrite(LED, LOW);
   Serial.printf("%s: Turnning the led OFF\n", myChipStrName);
- 
+  
 }
 
 void loop() {
+  //Check if there's a message from serial and broadcast it
   while(Serial.available()){
-    commandFromDrone = Serial.readString( );
+    commandFromGUI = Serial.readString( );
     if (iAmConnected) {
-      mesh.sendBroadcast(commandFromDrone);
+      mesh.sendBroadcast(commandFromGUI);
     }
   }
   
   // it will run the user scheduler as well
   mesh.update();
+
   //int i = WiFi.getTxPower();    
   //Serial.printf("dBm = %d\n",i);
 
-  if ((msgsReceived % 1001 == 0)&&(msgsReceived > 0)){
-     Serial.printf("%s: Acc received %d\n", myChipStrName, msgsReceived);       
-  }  
-//  if ((msgsSent % 1002 == 0)&&(msgsSent > 0)){
+//  if ((msgsReceived % 1000 == 0)&&(msgsReceived > 0)){
+//     Serial.printf("%s: Acc received %d\n", myChipStrName, msgsReceived);       
+//  }  
+//  if ((msgsSent % 1000 == 0)&&(msgsSent > 0)){
 //     Serial.printf("%s: Acc msg sent %d\n", myChipStrName, msgsSent);  
 //  }
-//  
-  
+
+
 }
+
 
 
 //typedef enum {
