@@ -7,6 +7,8 @@
 #include <mySD.h>
 #include <WiFi.h>
 #include <esp_now.h>
+#include <stdio.h>
+#include <inttypes.h>
 
 
 // The SSD1331 is connected like this (plus VCC plus GND)
@@ -60,6 +62,7 @@ long rand_number;
 // Experiment variables
 unsigned long  count_rx_msgs = 0;
 unsigned long  count_tx_msgs = 0;
+uint32_t sensors_msgs[10] = {0,0,0,0,0,0,0,0,0,0};
 
 // Define data structure
 typedef struct uav_sensor_message_t {
@@ -70,6 +73,8 @@ typedef struct uav_sensor_message_t {
 
 // msg to exchange with UAV
 uav_sensor_message_t msg_2_uav;
+
+
 
 ///////////////////////////////////////////////////////////////////////
 //
@@ -125,7 +130,7 @@ void display_refresh() {
 void display_dev_name(){
    oled.setCursor(5,20);  
    oled.setTextColor(OLED_Text_Color);
-   oled.print("Sensor 7");
+   oled.print("Drone 1");
 }
 
 // display RX/TX number of messages
@@ -249,14 +254,13 @@ void receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
  
   uint8_t msg = (received_msg->msg);
   uint8_t sender_type = (received_msg->dev_type);
-  //Serial.println(msg);
-  //Serial.println(sender_type);
-
-  // IFF comes from a UAV and it is a echo request, I send a echo reply
-  if (sender_type == 1){  // 0 = GS; 1 = UAV; 2 = sensor
-    if (msg == 1) { // 0 = none; 1 = echo request; 2 = echo reply
-      msg_2_uav.msg = 2; // 0 = none; 1 = echo request; 2 = echo reply
-      broadcast(msg_2_uav);      
+  uint8_t sender_id = (received_msg->dev_id);
+  
+  // IFF comes from a sensor count it...
+  if (sender_type == 2){  // 0 = GS; 1 = UAV; 2 = sensor
+    if (msg == 2) { // 0 = none; 1 = echo request; 2 = echo reply
+      sensors_msgs[sender_id] = sensors_msgs[sender_id] + 1;
+      Serial.printf("Received message from: %d\n", sender_id);
     }
   }
 }
@@ -268,7 +272,7 @@ void sentCallback(const uint8_t *macAddr, esp_now_send_status_t status)
   //Serial.print("Last Packet Sent to: ");
   //Serial.println(macStr);
   Serial.print("Last Packet Send Status: ");
-  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Sent Success" : "Sent Fail");
 }
 void broadcast(uav_sensor_message_t message)
 // Emulates a broadcast
@@ -284,7 +288,7 @@ void broadcast(uav_sensor_message_t message)
   // Send message
   esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &message, sizeof(uav_sensor_message_t));
   count_tx_msgs++;
-
+ 
   // Print results to serial monitor
   if (result == ESP_OK)
   {
@@ -384,7 +388,7 @@ void setup() {
     ///////////////////////////////////////////////////////////////////////
 
     // starting msg vars
-    msg_2_uav.dev_type = 2;
+    msg_2_uav.dev_type = 1;
     msg_2_uav.dev_id = 1;
     msg_2_uav.msg = 0;
 
@@ -404,9 +408,22 @@ void loop() {
     rand_number = random(10, 20);
     String some_string = String(rand_number);
     //log_2_sdcard(some_string);
-    //delay(1000);
+    //delay(900);
 
     //Drone 1 MAC Address: 84:CC:A8:4C:B4:94
+
+    // Send probe msg
+    int par = rand_number % 2;
+    msg_2_uav.msg = 1;
     
+    broadcast(msg_2_uav);
+    Serial.print("array: ");
+    for (byte i = 0; i < 10; i = i + 1) {
+      Serial.printf("%" PRIu32 " - ", sensors_msgs[i]);
+    }
+    Serial.println("");
+
+    //delay(rand_number*10);
+
 }
 ///////////////////////////////////////////////////////////////////////
